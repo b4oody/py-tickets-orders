@@ -43,6 +43,24 @@ class MovieViewSet(viewsets.ModelViewSet):
     queryset = Movie.objects.all()
     serializer_class = MovieSerializer
 
+    def get_queryset(self):
+        queryset = self.queryset
+        actors = self.request.query_params.get("actors")
+        genres = self.request.query_params.get("genres")
+        title = self.request.query_params.get("title")
+        if actors:
+            actors_ids = [int(str_id) for str_id in actors.split(",")]
+            queryset = Movie.objects.filter(actors__id__in=actors_ids)
+        elif genres:
+            genres_ids = [int(str_id) for str_id in genres.split(",")]
+            queryset = Movie.objects.filter(genres__id__in=genres_ids)
+        elif title:
+            queryset = Movie.objects.filter(title__contains=title)
+        if self.action == ("list", "retrieve"):
+            queryset = Movie.objects.prefetch_related("genres", "actors")
+            return queryset
+        return queryset.prefetch_related("genres", "actors")
+
     def get_serializer_class(self):
         if self.action == "list":
             return MovieListSerializer
@@ -56,6 +74,16 @@ class MovieViewSet(viewsets.ModelViewSet):
 class MovieSessionViewSet(viewsets.ModelViewSet):
     queryset = MovieSession.objects.all()
     serializer_class = MovieSessionSerializer
+
+    def get_queryset(self):
+        queryset = self.queryset
+        date = self.request.query_params.get("date")
+        movie = self.request.query_params.get("movie")
+        if date:
+            queryset = queryset.filter(show_time__date=date)
+        if movie:
+            queryset = queryset.filter(movie_id=movie)
+        return queryset
 
     def get_serializer_class(self):
         if self.action == "list":
