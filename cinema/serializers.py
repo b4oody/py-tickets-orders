@@ -1,4 +1,6 @@
+from django.db import transaction
 from rest_framework import serializers
+from rest_framework.generics import get_object_or_404
 
 from cinema.models import (
     Genre,
@@ -91,14 +93,47 @@ class MovieSessionDetailSerializer(MovieSessionSerializer):
 class TicketListSerializer(serializers.ModelSerializer):
     movie_session = MovieSessionListSerializer(read_only=True)
 
+    # movie_session = serializers.PrimaryKeyRelatedField()
+
     class Meta:
         model = Ticket
         fields = ["id", "row", "seat", "movie_session"]
 
 
 class OrderListSerializer(serializers.ModelSerializer):
-    tickets = TicketListSerializer(many=True, read_only=True)
+    tickets = TicketListSerializer(many=True)
 
     class Meta:
         model = Order
         fields = ["tickets", "created_at"]
+
+    @transaction.atomic
+    def create(self, validated_data):
+        tickets_data = validated_data.pop("tickets")
+        order = Order.objects.create(**validated_data)
+        for ticket_data in tickets_data:
+            Ticket.objects.create(order=order, **ticket_data)
+        return order
+
+
+class TicketCreateSerializer(TicketListSerializer):
+    movie_session = serializers.PrimaryKeyRelatedField(
+        queryset=MovieSession.objects.all()
+    )
+
+
+class OrderCreateSerializer(OrderListSerializer):
+    tickets = TicketCreateSerializer(many=True)
+
+    @transaction.atomic
+    def create(self, validated_data):
+        tickets_data = validated_data.pop("tickets")
+
+        order = Order.objects.create(**validated_data)
+        tickets = [
+            Ticket(order=order, **ticket_data)
+            for ticket_data in tickets_data
+        ]
+        Ticket.objects.bulk_create(tickets)
+        return order
+
